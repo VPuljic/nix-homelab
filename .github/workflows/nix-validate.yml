@@ -1,0 +1,79 @@
+name: Nix validation
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Nix configuration
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Parse all Nix files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          while IFS= read -r -d '' file; do
+            echo "Parsing ${file}"
+            nix-instantiate --parse "${file}" >/dev/null
+          done < <(find . -type f -name '*.nix' -print0)
+
+      - name: Evaluate homelab configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          hostname="$(
+            nix eval \
+              .#nixosConfigurations.homelab.config.networking.hostName \
+              --raw
+          )"
+
+          state_version="$(
+            nix eval \
+              .#nixosConfigurations.homelab.config.system.stateVersion \
+              --raw
+          )"
+
+          homelab_enabled="$(
+            nix eval \
+              .#nixosConfigurations.homelab.config.homelab.enable
+          )"
+
+          garbage_collection_enabled="$(
+            nix eval \
+              .#nixosConfigurations.homelab.config.nix.gc.automatic
+          )"
+
+          test "${hostname}" = "homelab"
+          test "${state_version}" = "26.05"
+          test "${homelab_enabled}" = "true"
+          test "${garbage_collection_enabled}" = "true"
+
+          nix eval \
+            .#nixosConfigurations.homelab.config.homelab.paths \
+            --json >/dev/null
+
+          nix eval \
+            .#nixosConfigurations.homelab.config.systemd.tmpfiles.rules \
+            --json >/dev/null
+
+          nix eval \
+            .#nixosConfigurations.homelab.config.environment.systemPackages \
+            --apply builtins.length >/dev/null
+
+          echo "Core NixOS configuration evaluated successfully."
