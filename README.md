@@ -24,6 +24,7 @@ Implemented:
 - Docker command compatibility through Podman;
 - weekly Podman pruning;
 - reusable service framework with Homepage disabled by default;
+- agenix secret-management foundation with no declared secrets;
 - GitHub Actions validation.
 
 Deliberately not configured yet:
@@ -33,7 +34,7 @@ Deliberately not configured yet:
 - static IP addressing;
 - hardware acceleration;
 - public DNS and TLS;
-- encrypted secrets;
+- encrypted secret files and recipients;
 - backups;
 - application services;
 - automatic system upgrades.
@@ -60,6 +61,7 @@ These items will be added after the physical PC and its storage are inspected.
 │   ├── base.nix
 │   ├── containers.nix
 │   ├── networking.nix
+│   ├── secrets.nix
 │   ├── ssh.nix
 │   ├── storage.nix
 │   └── users.nix
@@ -103,6 +105,7 @@ homelab.paths.state
 homelab.paths.data
 homelab.paths.backups
 homelab.containers.enable
+homelab.secrets.enable
 homelab.services.enable
 homelab.services.homepage.enable
 ```
@@ -116,6 +119,17 @@ Current default paths are:
 ```
 
 The directories are created declaratively with systemd tmpfiles rules.
+
+## Secret-management foundation
+
+The flake imports the agenix NixOS module and enables
+`homelab.secrets.enable`. No encrypted secret files are declared yet, so the
+current configuration does not deploy any secret values.
+
+After the physical server has generated its OpenSSH host keys, its public host
+key can be added as an agenix recipient. Only encrypted `.age` files and public
+recipient keys may be committed. Private keys and plaintext secret values must
+remain outside the repository.
 
 ## Development workflow on macOS
 
@@ -562,7 +576,7 @@ nix flake show
 
 The next phases will be added gradually:
 
-1. encrypted secret management;
+1. configure agenix recipients and add the first encrypted secret after the server host keys exist;
 2. storage design after inspecting the real disks;
 3. backup and restore workflow;
 4. LAN and optional Tailscale access;

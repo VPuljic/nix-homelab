@@ -109,6 +109,22 @@ jobs:
               .#nixosConfigurations.homelab.config.services.homepage-dashboard.enable
           )"
 
+          secrets_framework_enabled="$(
+            nix_eval \
+              .#nixosConfigurations.homelab.config.homelab.secrets.enable
+          )"
+
+          openssh_enabled="$(
+            nix_eval \
+              .#nixosConfigurations.homelab.config.services.openssh.enable
+          )"
+
+          declared_age_secret_count="$(
+            nix_eval \
+              .#nixosConfigurations.homelab.config.age.secrets \
+              --apply 'secrets: builtins.length (builtins.attrNames secrets)'
+          )"
+
           test "${hostname}" = "homelab"
           test "${state_version}" = "26.05"
           test "${homelab_enabled}" = "true"
@@ -122,6 +138,9 @@ jobs:
           test "${service_framework_enabled}" = "true"
           test "${homepage_requested}" = "false"
           test "${homepage_service_enabled}" = "false"
+          test "${secrets_framework_enabled}" = "true"
+          test "${openssh_enabled}" = "true"
+          test "${declared_age_secret_count}" = "0"
 
           nix_eval \
             .#nixosConfigurations.homelab.config.homelab.paths \
@@ -135,7 +154,7 @@ jobs:
             .#nixosConfigurations.homelab.config.environment.systemPackages \
             --apply builtins.length >/dev/null
 
-          echo "Core NixOS, Podman, and disabled service framework evaluated successfully."
+          echo "Core NixOS, Podman, disabled services, and empty agenix foundation evaluated successfully."
 
       - name: Confirm validation did not modify the checkout
         shell: bash
