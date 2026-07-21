@@ -23,6 +23,7 @@ Implemented:
 - Podman as the OCI-container backend;
 - Docker command compatibility through Podman;
 - weekly Podman pruning;
+- reusable service framework with Homepage disabled by default;
 - GitHub Actions validation.
 
 Deliberately not configured yet:
@@ -48,12 +49,14 @@ These items will be added after the physical PC and its storage are inspected.
 │       └── nix-validate.yml
 ├── hosts/
 │   └── homelab/
-│       └── default.nix
+│       ├── default.nix
+│       └── services.nix
 ├── modules/
 │   ├── homelab/
 │   │   └── default.nix
 │   ├── services/
-│   │   └── default.nix
+│   │   ├── default.nix
+│   │   └── homepage.nix
 │   ├── base.nix
 │   ├── containers.nix
 │   ├── networking.nix
@@ -100,6 +103,8 @@ homelab.paths.state
 homelab.paths.data
 homelab.paths.backups
 homelab.containers.enable
+homelab.services.enable
+homelab.services.homepage.enable
 ```
 
 Current default paths are:
@@ -557,14 +562,13 @@ nix flake show
 
 The next phases will be added gradually:
 
-1. reusable service framework with services disabled by default;
-2. encrypted secret management;
-3. storage design after inspecting the real disks;
-4. backup and restore workflow;
-5. LAN and optional Tailscale access;
-6. Caddy reverse proxy;
-7. first lightweight dashboard and monitoring services;
-8. media and document services one at a time.
+1. encrypted secret management;
+2. storage design after inspecting the real disks;
+3. backup and restore workflow;
+4. LAN and optional Tailscale access;
+5. Caddy reverse proxy;
+6. first lightweight dashboard and monitoring services;
+7. media and document services one at a time.
 
 Services from the reference homelab—such as Jellyfin, Immich, Paperless-ngx, Vaultwarden, Nextcloud, Homepage, and the media automation stack—will be considered individually rather than enabled together.
 

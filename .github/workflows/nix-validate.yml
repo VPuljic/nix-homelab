@@ -94,6 +94,21 @@ jobs:
               .#nixosConfigurations.homelab.config.virtualisation.podman.defaultNetwork.settings.dns_enabled
           )"
 
+          service_framework_enabled="$(
+            nix_eval \
+              .#nixosConfigurations.homelab.config.homelab.services.enable
+          )"
+
+          homepage_requested="$(
+            nix_eval \
+              .#nixosConfigurations.homelab.config.homelab.services.homepage.enable
+          )"
+
+          homepage_service_enabled="$(
+            nix_eval \
+              .#nixosConfigurations.homelab.config.services.homepage-dashboard.enable
+          )"
+
           test "${hostname}" = "homelab"
           test "${state_version}" = "26.05"
           test "${homelab_enabled}" = "true"
@@ -104,6 +119,9 @@ jobs:
           test "${oci_backend}" = "podman"
           test "${podman_prune_enabled}" = "true"
           test "${podman_dns_enabled}" = "true"
+          test "${service_framework_enabled}" = "true"
+          test "${homepage_requested}" = "false"
+          test "${homepage_service_enabled}" = "false"
 
           nix_eval \
             .#nixosConfigurations.homelab.config.homelab.paths \
@@ -117,7 +135,7 @@ jobs:
             .#nixosConfigurations.homelab.config.environment.systemPackages \
             --apply builtins.length >/dev/null
 
-          echo "Core NixOS and Podman configuration evaluated successfully."
+          echo "Core NixOS, Podman, and disabled service framework evaluated successfully."
 
       - name: Confirm validation did not modify the checkout
         shell: bash
