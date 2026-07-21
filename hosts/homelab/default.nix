@@ -5,6 +5,8 @@
     # Add this after installing NixOS on the actual homelab PC:
     # ./hardware-configuration.nix
 
+    ./services.nix
+
     ../../modules/base.nix
     ../../modules/networking.nix
     ../../modules/ssh.nix

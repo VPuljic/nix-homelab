@@ -1,12 +1,10 @@
-{ ... }:
+{ lib, ... }:
 
 {
-  # Homelab services will be imported here later.
-  #
-  # Example:
-  #
-  # imports = [
-  #   ./jellyfin.nix
-  #   ./nginx.nix
-  # ];
+  imports = [
+    ./homepage.nix
+  ];
+
+  options.homelab.services.enable =
+    lib.mkEnableOption "the homelab application service framework";
 }
