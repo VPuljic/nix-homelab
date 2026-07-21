@@ -11,6 +11,7 @@
     ../../modules/networking.nix
     ../../modules/ssh.nix
     ../../modules/users.nix
+    ../../modules/secrets.nix
     ../../modules/storage.nix
     ../../modules/containers.nix
 
@@ -26,6 +27,7 @@
     enable = true;
 
     containers.enable = true;
+    secrets.enable = true;
 
     user = "vp";
     group = "homelab";
