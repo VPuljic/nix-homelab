@@ -23,6 +23,8 @@
   homelab = {
     enable = true;
 
+    containers.enable = true;
+
     user = "vp";
     group = "homelab";
 
