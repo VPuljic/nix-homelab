@@ -25,7 +25,6 @@ The repository should contain at least:
 
 ```text
 flake.nix
-flake.lock
 hosts/homelab/default.nix
 modules/base.nix
 modules/networking.nix
@@ -33,8 +32,12 @@ modules/ssh.nix
 modules/users.nix
 modules/storage.nix
 modules/containers.nix
+modules/homelab/default.nix
 modules/services/default.nix
 ```
+
+`flake.lock` may be absent before the first deployment. It will be generated
+on the NixOS homelab PC and then committed to this repository.
 
 Do not run the old repository-bootstrap scripts. Their only purpose was to create these files before they were committed to Git.
 
@@ -99,6 +102,7 @@ The beginning of the file should resemble:
     ../../modules/users.nix
     ../../modules/storage.nix
     ../../modules/containers.nix
+    ../../modules/homelab
     ../../modules/services
   ];
 ```
@@ -205,16 +209,30 @@ git status
 
 This does not create a commit yet. It makes the files visible to Git-based flake evaluation.
 
-### 6. Confirm the locked input
+### 6. Create or use the locked input
 
-The repository should already include `flake.lock` from GitHub:
+`flake.lock` pins the exact Nixpkgs revision used by the repository. Unlike
+`hardware-configuration.nix`, it is repository-specific rather than
+hardware-specific.
+
+If it does not exist during the first deployment, generate it on the NixOS
+homelab PC:
 
 ```bash
-test -f flake.lock
+test -f flake.lock || nix flake lock
+```
+
+Confirm that it exists and stage it:
+
+```bash
+test -s flake.lock
+git add flake.lock
 git status --short flake.lock
 ```
 
-For the first deployment, use the committed lock file. Do not run `nix flake update` merely to make the first build work, because that would change the pinned Nixpkgs revision before the existing configuration has been tested.
+If `flake.lock` was already committed, use it unchanged for the first build.
+Do not run `nix flake update` merely to make the initial deployment work,
+because that deliberately selects newer input revisions.
 
 Inspect the flake:
 
@@ -228,7 +246,6 @@ The output should include:
 ```text
 nixosConfigurations.homelab
 ```
-
 ### 7. Evaluate and check the configuration
 
 Check the flake:
@@ -344,15 +361,26 @@ git diff --cached
 git status
 ```
 
+Stage the generated lock file, hardware configuration, and edited host
+module:
+
+```bash
+git add flake.lock
+git add hosts/homelab/hardware-configuration.nix
+git add hosts/homelab/default.nix
+```
+
 Then commit and push:
 
 ```bash
-git commit -m "Add homelab hardware configuration"
+git commit -m "Add homelab machine configuration"
 git push
 ```
 
-`hardware-configuration.nix` is machine-specific. It is normally committed so that the same machine can be rebuilt reproducibly. Review it before publishing the repository, especially if the repository is public.
-
+`hardware-configuration.nix` describes the physical machine and is normally
+committed so that the same computer can be rebuilt. `flake.lock` pins the
+exact Nixpkgs revision used for the deployment. Review both before publishing
+the repository.
 ### 11. Normal workflow for later configuration changes
 
 After editing one or more `.nix` files:
