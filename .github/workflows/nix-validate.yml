@@ -22,30 +22,6 @@ jobs:
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Prepare flake lock file
-        id: lock
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if git ls-files --error-unmatch flake.lock >/dev/null 2>&1; then
-            echo "generated=false" >> "${GITHUB_OUTPUT}"
-            echo "Using the committed flake.lock."
-          else
-            nix flake lock
-            echo "generated=true" >> "${GITHUB_OUTPUT}"
-            echo "Generated flake.lock for download."
-          fi
-
-      - name: Upload generated flake lock
-        if: steps.lock.outputs.generated == 'true'
-        uses: actions/upload-artifact@v7
-        with:
-          name: flake-lock
-          path: flake.lock
-          retention-days: 1
-          if-no-files-found: error
-
       - name: Parse all Nix files
         shell: bash
         run: |
@@ -61,50 +37,97 @@ jobs:
         run: |
           set -euo pipefail
 
+          nix_eval() {
+            nix eval --no-write-lock-file "$@"
+          }
+
           hostname="$(
-            nix eval \
+            nix_eval \
               .#nixosConfigurations.homelab.config.networking.hostName \
               --raw
           )"
 
           state_version="$(
-            nix eval \
+            nix_eval \
               .#nixosConfigurations.homelab.config.system.stateVersion \
               --raw
           )"
 
           homelab_enabled="$(
-            nix eval \
+            nix_eval \
               .#nixosConfigurations.homelab.config.homelab.enable
           )"
 
           garbage_collection_enabled="$(
-            nix eval \
+            nix_eval \
               .#nixosConfigurations.homelab.config.nix.gc.automatic
+          )"
+
+          container_platform_enabled="$(
+            nix_eval \
+              .#nixosConfigurations.homelab.config.homelab.containers.enable
+          )"
+
+          podman_enabled="$(
+            nix_eval \
+              .#nixosConfigurations.homelab.config.virtualisation.podman.enable
+          )"
+
+          docker_enabled="$(
+            nix_eval \
+              .#nixosConfigurations.homelab.config.virtualisation.docker.enable
+          )"
+
+          oci_backend="$(
+            nix_eval \
+              .#nixosConfigurations.homelab.config.virtualisation.oci-containers.backend \
+              --raw
+          )"
+
+          podman_prune_enabled="$(
+            nix_eval \
+              .#nixosConfigurations.homelab.config.virtualisation.podman.autoPrune.enable
+          )"
+
+          podman_dns_enabled="$(
+            nix_eval \
+              .#nixosConfigurations.homelab.config.virtualisation.podman.defaultNetwork.settings.dns_enabled
           )"
 
           test "${hostname}" = "homelab"
           test "${state_version}" = "26.05"
           test "${homelab_enabled}" = "true"
           test "${garbage_collection_enabled}" = "true"
+          test "${container_platform_enabled}" = "true"
+          test "${podman_enabled}" = "true"
+          test "${docker_enabled}" = "false"
+          test "${oci_backend}" = "podman"
+          test "${podman_prune_enabled}" = "true"
+          test "${podman_dns_enabled}" = "true"
 
-          nix eval \
+          nix_eval \
             .#nixosConfigurations.homelab.config.homelab.paths \
             --json >/dev/null
 
-          nix eval \
+          nix_eval \
             .#nixosConfigurations.homelab.config.systemd.tmpfiles.rules \
             --json >/dev/null
 
-          nix eval \
+          nix_eval \
             .#nixosConfigurations.homelab.config.environment.systemPackages \
             --apply builtins.length >/dev/null
 
-          echo "Core NixOS configuration evaluated successfully."
+          echo "Core NixOS and Podman configuration evaluated successfully."
 
-      - name: Verify committed lock file remains unchanged
-        if: steps.lock.outputs.generated == 'false'
+      - name: Confirm validation did not modify the checkout
         shell: bash
         run: |
           set -euo pipefail
-          git diff --exit-code -- flake.lock
+
+          if git ls-files --error-unmatch flake.lock >/dev/null 2>&1; then
+            git diff --exit-code -- flake.lock
+          else
+            test ! -e flake.lock
+          fi
+
+          git diff --exit-code

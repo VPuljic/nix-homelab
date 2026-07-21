@@ -1,58 +1,192 @@
 # nix-homelab
-<!-- BEGIN: NIXOS HOMELAB POST-INSTALL -->
 
-## NixOS homelab: first deployment after installation
+A declarative, flake-based NixOS configuration for a single homelab server.
 
-These steps assume that:
+This repository is being developed on macOS and validated with GitHub Actions. The physical server will provide the hardware-specific configuration and the first committed `flake.lock`.
 
-- NixOS is already installed and booting on the homelab PC.
-- This repository has already been cloned from GitHub.
-- The shell is currently inside the repository root, where `flake.nix` is located.
-- The target flake configuration is named `homelab`.
+The structure is inspired by the modular approach used in [`notthebee/nix-config`](https://git.notthebe.ee/notthebee/nix-config), but only the homelab-server ideas are being adapted. Machine-specific disk layouts, network identifiers, domains, secrets, and hardware settings are not copied.
 
-> Keep local console access available during the first activation. Do not perform the first switch only through SSH, because an incorrect network, user, firewall, or SSH setting could disconnect the machine.
+## Current status
 
-### 1. Enter the repository and inspect it
+Implemented:
 
-```bash
-cd /path/to/nix-homelab
-pwd
-git status
-find hosts modules -maxdepth 3 -type f | sort
-```
+- one NixOS host named `homelab`;
+- NixOS 26.05 from Nixpkgs;
+- reusable `homelab.*` options;
+- central state, data, and backup paths;
+- NetworkManager with the NixOS firewall enabled;
+- OpenSSH with root login disabled;
+- administrative user `vp`;
+- flakes and `nix-command`;
+- Nix store optimisation and scheduled garbage collection;
+- server administration and diagnostic packages;
+- Podman as the OCI-container backend;
+- Docker command compatibility through Podman;
+- weekly Podman pruning;
+- GitHub Actions validation.
 
-The repository should contain at least:
+Deliberately not configured yet:
+
+- disk partitioning and filesystems;
+- `hardware-configuration.nix`;
+- static IP addressing;
+- hardware acceleration;
+- public DNS and TLS;
+- encrypted secrets;
+- backups;
+- application services;
+- automatic system upgrades.
+
+These items will be added after the physical PC and its storage are inspected.
+
+## Repository structure
 
 ```text
-flake.nix
-hosts/homelab/default.nix
-modules/base.nix
-modules/networking.nix
-modules/ssh.nix
-modules/users.nix
-modules/storage.nix
-modules/containers.nix
-modules/homelab/default.nix
-modules/services/default.nix
+.
+├── .github/
+│   └── workflows/
+│       └── nix-validate.yml
+├── hosts/
+│   └── homelab/
+│       └── default.nix
+├── modules/
+│   ├── homelab/
+│   │   └── default.nix
+│   ├── services/
+│   │   └── default.nix
+│   ├── base.nix
+│   ├── containers.nix
+│   ├── networking.nix
+│   ├── ssh.nix
+│   ├── storage.nix
+│   └── users.nix
+├── flake.nix
+├── LICENSE
+└── README.md
 ```
 
-`flake.lock` may be absent before the first deployment. It will be generated
-on the NixOS homelab PC and then committed to this repository.
+Files added later on the NixOS PC:
 
-Do not run the old repository-bootstrap scripts. Their only purpose was to create these files before they were committed to Git.
+```text
+flake.lock
+hosts/homelab/hardware-configuration.nix
+```
 
-### 2. Add the real hardware configuration
+## Configuration model
 
-The repository deliberately does not contain a generic `hardware-configuration.nix`. This file must describe the actual homelab PC, including its file systems, disk UUIDs, boot-related modules, and detected hardware.
+`flake.nix` defines one NixOS configuration:
 
-If the normal NixOS installation created `/etc/nixos/hardware-configuration.nix`, copy it into the host directory:
+```nix
+nixosConfigurations.homelab
+```
+
+`hosts/homelab/default.nix` selects the modules and contains host-specific values such as:
+
+```nix
+networking.hostName = "homelab";
+nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
+system.stateVersion = "26.05";
+```
+
+The reusable homelab module defines:
+
+```text
+homelab.enable
+homelab.user
+homelab.group
+homelab.timeZone
+homelab.domain
+homelab.paths.state
+homelab.paths.data
+homelab.paths.backups
+homelab.containers.enable
+```
+
+Current default paths are:
+
+```text
+/srv/homelab   application configuration and state
+/srv/data      media and application data
+/srv/backups   local backup storage
+```
+
+The directories are created declaratively with systemd tmpfiles rules.
+
+## Development workflow on macOS
+
+Nix does not need to be installed on the Mac.
+
+Make changes on the feature branch:
+
+```bash
+cd ~/Developer/nix-homelab
+git switch feature/homelab-platform
+git pull --ff-only
+```
+
+Review local changes:
+
+```bash
+git status
+git diff
+git diff --check
+```
+
+Commit only the intended files:
+
+```bash
+git add path/to/changed-file
+git diff --cached
+git commit -m "Describe the change"
+git push
+```
+
+GitHub Actions parses all `.nix` files and evaluates important NixOS options on an Ubuntu runner.
+
+Temporary helper scripts used to create or modify files should be deleted before committing.
+
+## First deployment on the NixOS PC
+
+These steps assume:
+
+- NixOS is installed and booting;
+- the repository has been cloned;
+- the shell is in the repository root;
+- local console access is available.
+
+Do not perform the first activation only over SSH. Keep a local console available in case networking, firewall, user, or SSH settings are incorrect.
+
+### 1. Clone the repository
+
+During development, clone the feature branch:
+
+```bash
+git clone \
+  --branch feature/homelab-platform \
+  https://github.com/VPuljic/nix-homelab.git
+
+cd nix-homelab
+```
+
+After the branch is merged, clone the default branch instead.
+
+Confirm the checkout:
+
+```bash
+git branch --show-current
+git status
+```
+
+### 2. Add the hardware configuration
+
+If the NixOS installation already created `/etc/nixos/hardware-configuration.nix`, copy it:
 
 ```bash
 cp /etc/nixos/hardware-configuration.nix \
   hosts/homelab/hardware-configuration.nix
 ```
 
-If that file does not exist, generate it from the running machine:
+Otherwise, generate it from the running PC:
 
 ```bash
 sudo nixos-generate-config --show-hardware-config \
@@ -63,112 +197,72 @@ Confirm that the file is not empty:
 
 ```bash
 test -s hosts/homelab/hardware-configuration.nix
-grep -nE 'fileSystems|boot.initrd|nixpkgs.hostPlatform' \
-  hosts/homelab/hardware-configuration.nix
 ```
 
-### 3. Enable the hardware import
-
-Open the host configuration:
-
-```bash
-nvim hosts/homelab/default.nix
-```
-
-Inside the `imports` list, change:
-
-```nix
-# ./hardware-configuration.nix
-```
-
-to:
+Open `hosts/homelab/default.nix` and uncomment:
 
 ```nix
 ./hardware-configuration.nix
 ```
 
-The beginning of the file should resemble:
+Stage the new file because Git-backed flakes do not see untracked files:
 
-```nix
-{ lib, ... }:
-
-{
-  imports = [
-    ./hardware-configuration.nix
-
-    ../../modules/base.nix
-    ../../modules/networking.nix
-    ../../modules/ssh.nix
-    ../../modules/users.nix
-    ../../modules/storage.nix
-    ../../modules/containers.nix
-    ../../modules/homelab
-    ../../modules/services
-  ];
+```bash
+git add hosts/homelab/hardware-configuration.nix
+git add hosts/homelab/default.nix
 ```
 
-In a NixOS module, `imports` combines the listed modules into one system configuration. It is not the same as the Nix-language `import` function.
+### 3. Generate the lock file
 
-### 4. Review machine-specific settings before activation
+`flake.lock` is repository-specific, not hardware-specific. It pins the exact Nixpkgs revision used by the server.
 
-#### Hostname
+Create it during the first deployment:
 
-The intended hostname is currently:
-
-```nix
-networking.hostName = "homelab";
+```bash
+test -f flake.lock || nix flake lock
+test -s flake.lock
+git add flake.lock
 ```
 
-Keep it or change it in `hosts/homelab/default.nix` before the first activation.
+Do not run `nix flake update` during the first deployment. That command is for deliberately updating already locked inputs later.
 
-#### Platform
+### 4. Review machine-specific settings
 
-The configuration currently targets a normal 64-bit Intel or AMD PC:
-
-```nix
-nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
-```
-
-Check the installed machine:
+Check the architecture:
 
 ```bash
 uname -m
 ```
 
-Expected output for this configuration:
+The current configuration expects:
 
 ```text
 x86_64
 ```
 
-#### State version
-
-The repository currently contains:
+Review these values in `hosts/homelab/default.nix`:
 
 ```nix
+networking.hostName = "homelab";
+nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 system.stateVersion = "26.05";
 ```
 
-This value should represent the NixOS release used for the machine's first managed installation. Do not increase it merely because NixOS or Nixpkgs is upgraded later. Change it now only if the initial installation was performed with a different release and you have deliberately chosen that release as the machine's state version.
+`system.stateVersion` should represent the release used for the first managed installation. Do not increase it during ordinary upgrades.
 
-#### Administrative user
+Review the administrative user in `modules/users.nix`:
 
-The configuration currently declares the user `vp` in `modules/users.nix`.
-
-Check the current account and groups:
-
-```bash
-whoami
-id vp
+```text
+vp
 ```
 
-Before relying on remote login, confirm that `vp` has a working password or an SSH public key. To set or replace the local password:
+Set a local password if required:
 
 ```bash
 sudo passwd vp
 ```
 
-For SSH-key authentication, add only the **public** key to `modules/users.nix`, for example:
+Add only a public SSH key to the repository:
 
 ```nix
 openssh.authorizedKeys.keys = [
@@ -176,63 +270,25 @@ openssh.authorizedKeys.keys = [
 ];
 ```
 
-Never commit private SSH keys, plaintext passwords, API tokens, recovery codes, or other secrets to this repository.
+Never commit private keys, plaintext passwords, API tokens, recovery codes, or other secrets.
 
-#### Network
+### 5. Inspect networking
 
-The current module enables NetworkManager. Inspect the detected interfaces and current connection before switching:
+The initial configuration uses NetworkManager and DHCP.
+
+Inspect the real machine:
 
 ```bash
+ip -brief link
 ip -brief address
+ip route
 nmcli device status
 nmcli connection show
-ip route
 ```
 
-The current configuration is suitable for DHCP through NetworkManager. A static address, bridge, VLAN, bond, or server-specific DNS configuration should be added only after the actual network design is known.
+Static addressing, bridges, VLANs, bonds, and server-specific DNS should be configured only after the actual network is known.
 
-#### SSH and firewall
-
-The repository enables OpenSSH and the NixOS firewall. Before using the machine without a monitor, verify the final SSH configuration and test login from another computer on the local network.
-
-Do not disable SSH password authentication until public-key login has been tested successfully in a separate terminal.
-
-### 5. Stage the hardware file before evaluating the flake
-
-A flake loaded from a Git repository normally sees files that are tracked or staged by Git. Stage the new hardware file and the edited host configuration before checking the flake:
-
-```bash
-git add hosts/homelab/hardware-configuration.nix
-git add hosts/homelab/default.nix
-git status
-```
-
-This does not create a commit yet. It makes the files visible to Git-based flake evaluation.
-
-### 6. Create or use the locked input
-
-`flake.lock` pins the exact Nixpkgs revision used by the repository. Unlike
-`hardware-configuration.nix`, it is repository-specific rather than
-hardware-specific.
-
-If it does not exist during the first deployment, generate it on the NixOS
-homelab PC:
-
-```bash
-test -f flake.lock || nix flake lock
-```
-
-Confirm that it exists and stage it:
-
-```bash
-test -s flake.lock
-git add flake.lock
-git status --short flake.lock
-```
-
-If `flake.lock` was already committed, use it unchanged for the first build.
-Do not run `nix flake update` merely to make the initial deployment work,
-because that deliberately selects newer input revisions.
+### 6. Validate the flake
 
 Inspect the flake:
 
@@ -241,62 +297,54 @@ nix flake metadata
 nix flake show
 ```
 
-The output should include:
+The output should contain:
 
 ```text
 nixosConfigurations.homelab
 ```
-### 7. Evaluate and check the configuration
 
-Check the flake:
+Run the checks:
 
 ```bash
 nix flake check
 ```
 
-Confirm the configured hostname:
+Confirm key values:
 
 ```bash
 nix eval \
   .#nixosConfigurations.homelab.config.networking.hostName \
   --raw
-
 echo
-```
 
-Expected output:
-
-```text
-homelab
-```
-
-Confirm the state version:
-
-```bash
 nix eval \
   .#nixosConfigurations.homelab.config.system.stateVersion \
   --raw
-
 echo
 ```
 
-Build the complete NixOS system without activating it:
+Expected values:
+
+```text
+homelab
+26.05
+```
+
+### 7. Build without activation
 
 ```bash
 sudo nixos-rebuild build --flake .#homelab
 ```
 
-A successful build creates a `result` symlink in the repository. That symlink is a build result and should not be committed.
+A successful build creates a `result` symlink. It is ignored by Git and must not be committed.
 
-### 8. Test the new system temporarily
-
-Activate the configuration without making it the default boot generation:
+### 8. Test temporarily
 
 ```bash
 sudo nixos-rebuild test --flake .#homelab
 ```
 
-Immediately verify the essential functions:
+Verify the essentials:
 
 ```bash
 hostnamectl
@@ -305,32 +353,41 @@ nmcli device status
 ip -brief address
 ip route
 systemctl status sshd --no-pager
+systemctl --failed
 ss -lntup
 ```
 
-From another machine on the same network, test SSH:
+Verify Podman:
 
 ```bash
-ssh vp@homelab
+podman version
+podman info
+docker --version
 ```
 
-If local DNS does not yet resolve `homelab`, use the server's IP address:
+No application containers are defined yet, so `podman ps` should normally show no running containers:
+
+```bash
+podman ps
+```
+
+From another computer on the same LAN, test SSH while keeping the local console open:
 
 ```bash
 ssh vp@SERVER_IP_ADDRESS
 ```
 
-Keep the local console session open while performing this test.
+Do not disable password authentication until public-key login has been tested successfully.
 
-### 9. Make the configuration permanent
+### 9. Activate permanently
 
-After the temporary activation works correctly:
+After the temporary test succeeds:
 
 ```bash
 sudo nixos-rebuild switch --flake .#homelab
 ```
 
-Verify the active system:
+Verify:
 
 ```bash
 nixos-version
@@ -339,7 +396,7 @@ systemctl is-active sshd
 systemctl --failed
 ```
 
-Reboot once and confirm that the machine returns with networking and SSH working:
+Reboot once:
 
 ```bash
 sudo reboot
@@ -352,38 +409,35 @@ hostnamectl
 systemctl --failed
 ```
 
-### 10. Commit the machine-specific configuration
+### 10. Commit the machine configuration
 
-Review exactly what will be committed:
+Review the staged files:
 
 ```bash
-git diff --cached
 git status
+git diff --cached
 ```
 
-Stage the generated lock file, hardware configuration, and edited host
-module:
-
-```bash
-git add flake.lock
-git add hosts/homelab/hardware-configuration.nix
-git add hosts/homelab/default.nix
-```
-
-Then commit and push:
+Commit and push:
 
 ```bash
 git commit -m "Add homelab machine configuration"
 git push
 ```
 
-`hardware-configuration.nix` describes the physical machine and is normally
-committed so that the same computer can be rebuilt. `flake.lock` pins the
-exact Nixpkgs revision used for the deployment. Review both before publishing
-the repository.
-### 11. Normal workflow for later configuration changes
+This commit should include:
 
-After editing one or more `.nix` files:
+```text
+flake.lock
+hosts/homelab/hardware-configuration.nix
+hosts/homelab/default.nix
+```
+
+Review the hardware configuration before publishing it.
+
+## Normal update workflow
+
+After changing the configuration on the server:
 
 ```bash
 git diff
@@ -393,20 +447,19 @@ sudo nixos-rebuild test --flake .#homelab
 sudo nixos-rebuild switch --flake .#homelab
 ```
 
-Then record the tested change:
+Then commit only the tested change:
 
 ```bash
-git add flake.nix flake.lock hosts modules README.md
 git status
+git add path/to/changed-file
+git diff --cached
 git commit -m "Describe the homelab change"
 git push
 ```
 
-Do not use `git add .` blindly after services begin storing local data near the repository. Always inspect `git status` first.
+## Deploying changes created on the Mac
 
-### 12. Pulling changes made on another computer
-
-Before deploying changes created and pushed from the laptop:
+On the NixOS server:
 
 ```bash
 cd /path/to/nix-homelab
@@ -417,14 +470,13 @@ sudo nixos-rebuild test --flake .#homelab
 sudo nixos-rebuild switch --flake .#homelab
 ```
 
-Use `git pull --ff-only` so that Git stops instead of creating an unexpected merge commit when local and remote history have diverged.
+`git pull --ff-only` stops instead of creating an unexpected merge commit when histories have diverged.
 
-### 13. Updating Nixpkgs deliberately
+## Updating Nixpkgs
 
-The `flake.lock` file pins the exact Nixpkgs revision. Updating the operating system packages is therefore a deliberate repository change:
+Once `flake.lock` is committed, updates are deliberate repository changes:
 
 ```bash
-cd /path/to/nix-homelab
 git status
 nix flake update
 nix flake check
@@ -433,7 +485,7 @@ sudo nixos-rebuild test --flake .#homelab
 sudo nixos-rebuild switch --flake .#homelab
 ```
 
-After the updated system has been tested:
+After testing:
 
 ```bash
 git add flake.lock
@@ -441,49 +493,58 @@ git commit -m "Update flake inputs"
 git push
 ```
 
-Do not change `system.stateVersion` as part of a routine flake update.
+Do not change `system.stateVersion` as part of a routine input update.
 
-### 14. Recovery and rollback
+## Rollback and recovery
 
-If a newly switched configuration is faulty but the system is still usable:
+Rollback the current system when it is still usable:
 
 ```bash
 sudo nixos-rebuild switch --rollback
 ```
 
-If the machine does not boot normally, select an earlier NixOS generation from the bootloader menu.
-
-Inspect available system generations with:
+List system generations:
 
 ```bash
-sudo nix-env --list-generations --profile /nix/var/nix/profiles/system
+sudo nix-env \
+  --list-generations \
+  --profile /nix/var/nix/profiles/system
 ```
 
-After recovering, fix or revert the Git change before attempting another deployment:
+If the machine does not boot, choose an earlier NixOS generation in the bootloader menu.
+
+After recovery:
 
 ```bash
 git status
 git log --oneline --decorate -n 10
 ```
 
-### 15. Useful diagnostics
+Fix or revert the repository change before deploying again.
+
+## Useful diagnostics
 
 ```bash
-# Failed systemd units
+# Failed units
 systemctl --failed
 
-# Logs for the current boot
+# Current-boot warnings
 journalctl -b -p warning
 
-# SSH service logs
+# SSH logs
 journalctl -u sshd -b
 
-# Network status
+# Networking
 nmcli device status
 ip -brief address
 ip route
 
-# NixOS generation and version
+# Podman
+podman info
+podman ps --all
+systemctl status podman-auto-prune.service --no-pager
+
+# Current NixOS generation
 readlink -f /run/current-system
 nixos-version
 
@@ -492,11 +553,25 @@ nix flake metadata
 nix flake show
 ```
 
-### References
+## Planned implementation order
+
+The next phases will be added gradually:
+
+1. reusable service framework with services disabled by default;
+2. encrypted secret management;
+3. storage design after inspecting the real disks;
+4. backup and restore workflow;
+5. LAN and optional Tailscale access;
+6. Caddy reverse proxy;
+7. first lightweight dashboard and monitoring services;
+8. media and document services one at a time.
+
+Services from the reference homelab—such as Jellyfin, Immich, Paperless-ngx, Vaultwarden, Nextcloud, Homepage, and the media automation stack—will be considered individually rather than enabled together.
+
+## References
 
 - [NixOS manual](https://nixos.org/manual/nixos/stable/)
-- [MyNixOS option: `system.stateVersion`](https://mynixos.com/nixpkgs/option/system.stateVersion)
-- [MyNixOS option: `networking.networkmanager.enable`](https://mynixos.com/nixpkgs/option/networking.networkmanager.enable)
-- [MyNixOS option: `services.openssh.openFirewall`](https://mynixos.com/nixpkgs/option/services.openssh.openFirewall)
-
-<!-- END: NIXOS HOMELAB POST-INSTALL -->
+- [Nix language basics](https://nix.dev/tutorials/nix-language.html)
+- [Nix flakes](https://nix.dev/concepts/flakes.html)
+- [MyNixOS](https://mynixos.com/)
+- [Reference homelab configuration](https://git.notthebe.ee/notthebee/nix-config)
