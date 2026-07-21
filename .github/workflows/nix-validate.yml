@@ -22,6 +22,30 @@ jobs:
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Prepare flake lock file
+        id: lock
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git ls-files --error-unmatch flake.lock >/dev/null 2>&1; then
+            echo "generated=false" >> "${GITHUB_OUTPUT}"
+            echo "Using the committed flake.lock."
+          else
+            nix flake lock
+            echo "generated=true" >> "${GITHUB_OUTPUT}"
+            echo "Generated flake.lock for download."
+          fi
+
+      - name: Upload generated flake lock
+        if: steps.lock.outputs.generated == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: flake-lock
+          path: flake.lock
+          retention-days: 1
+          if-no-files-found: error
+
       - name: Parse all Nix files
         shell: bash
         run: |
@@ -77,3 +101,10 @@ jobs:
             --apply builtins.length >/dev/null
 
           echo "Core NixOS configuration evaluated successfully."
+
+      - name: Verify committed lock file remains unchanged
+        if: steps.lock.outputs.generated == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- flake.lock
